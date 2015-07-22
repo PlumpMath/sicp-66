@@ -14,4 +14,9 @@ define (abs x)
 
 define (indentity x) x
 
+; class Point ()
+;   define (__init__ self)
+;     set! self.x 10
+;     set! self.y 50
 
+;     print self.x

@@ -36,7 +36,10 @@ SPACES_RE = re.compile(r'\s*', re.MULTILINE)
 PATH_TO_STDLIB = './stdlib.scm'
 
 class Ast(object):
-  pass
+  def __new__(cls, *args, **kwargs):
+    self = super(Ast, cls).__new__(cls, *args, **kwargs)
+    self.attributes = dict()
+    return self
 
 class Nil(Ast):
   def __repr__(self):
@@ -72,6 +75,7 @@ class Float(Ast, float):
 
 class Lambda(Ast):
   def __init__(self, name, arglist, body, parentscm):
+    super(Lambda, self).__init__()
     self.name = name
     self.arglist = arglist
     self.body = body
@@ -91,6 +95,7 @@ class Lambda(Ast):
 
 class Builtin(Ast):
   def __init__(self, f):
+    super(Builtin, self).__init__()
     self.f = f
 
   def __call__(self, scm, args):
@@ -157,7 +162,7 @@ def legacyparse(s):
       stack[-1][-1].end = i
     else:
       j = i
-      while i < len(s) and s[i] not in ('(', ')') and not s[i].isspace():
+      while i < len(s) and s[i] not in '()' and not s[i].isspace():
         i += 1
       tok = s[j:i]
       try:
@@ -486,15 +491,32 @@ def random_(scm, args):
   # NOTE: randint includes x in the range of possible values.
   return random.randint(0, x)
 
-# Load the standard library.
-with open(PATH_TO_STDLIB) as f:
-  scm(f.read())
-
 @scm.setfunc('lambda')
 def lambda_(scm, args):
   arglist = args[0]
   body = args[1:]
   return Lambda('<lambda>', arglist, body, scm)
+
+@scm.setfunc('quote')
+def quote(scm, args):
+  x, = args
+  return x
+
+@scm.setfunc('setattr')
+def setattr_(scm, args):
+  owner, name, value = map(scm.eval, args)
+  assert type(name) == Symbol
+  owner.attributes[name] = value
+
+@scm.setfunc('getattr')
+def getattr_(scm, args):
+  owner, name = map(scm.eval, args)
+  assert type(name) == Symbol
+  return owner.attributes[name]
+
+# Load the standard library.
+with open(PATH_TO_STDLIB) as f:
+  scm(f.read())
 
 def main():
   # TODO: Real option parsing.
