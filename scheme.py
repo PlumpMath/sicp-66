@@ -1,3 +1,4 @@
+import random
 import sys
 
 class Ast(object):
@@ -15,6 +16,9 @@ class List(Ast, list):
 
 class Bool(Ast, int):
   pass
+
+true = Bool(True)
+false = Bool(False)
 
 class Symbol(Ast, str):
   def __repr__(self):
@@ -55,13 +59,13 @@ class Builtin(Ast):
   def __call__(self, scm, args):
     return self.f(scm, args)
 
-def toAst(x):
+def toast(x):
   if isinstance(x, Ast):
     return x
   elif x == None:
     return nil
   elif isinstance(x, list):
-    return List(map(toAst, x))
+    return List(map(toast, x))
   elif isinstance(x, bool):
     return Bool(x)
   elif isinstance(x, int):
@@ -161,7 +165,7 @@ class Scheme(object):
     assert isinstance(ast, Ast), ast
     if isinstance(ast, List):
       f = self.eval(ast[0])
-      return toAst(f(self, ast[1:]))
+      return toast(f(self, ast[1:]))
     elif isinstance(ast, Symbol):
       return self[ast]
     elif isinstance(ast, (Int, Float)):
@@ -170,6 +174,10 @@ class Scheme(object):
       raise ValueError('Unknown ast type: %s' % type(ast))
 
 scm = Scheme()
+
+scm.table[Symbol('nil')] = nil
+scm.table[Symbol('true')] = true
+scm.table[Symbol('false')] = false
 
 @scm.setfunc('print')
 def print_(scm, args):
@@ -274,6 +282,27 @@ def or_(scm, args):
 def not_(scm, args):
   x, = map(scm.eval, args)
   return not x
+
+@scm.setfunc('abs')
+def abs_(scm, args):
+  x, = map(scm.eval, args)
+  return abs(x)
+
+@scm.setfunc('remainder')
+def even(scm, args):
+  x, n = map(scm.eval, args)
+  return x % n
+
+@scm.setfunc('square')
+def square(scm, args):
+  x, = map(scm.eval, args)
+  return x * x
+
+@scm.setfunc('random')
+def random_(scm, args):
+  x, = map(scm.eval, args)
+  # NOTE: randint includes x in the range of possible values.
+  return random.randint(0, x)
 
 def main():
   if len(sys.argv) > 1:
