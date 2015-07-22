@@ -3,6 +3,11 @@ This file is starting to get rather big...
 
 structure of this file:
 
+  Imports and Constants
+    imorts
+    Precompiled regexes
+    path to standard library
+
   Ast
     Ast and its subclasses
     toast function
@@ -20,6 +25,14 @@ structure of this file:
 import random
 import re
 import sys
+
+LINE_COMMENT_RE = re.compile(r';.*?(?=\n|\Z)', re.MULTILINE)
+BLOCK_COMMENT_RE = re.compile(r'#\|.*?\|#', re.MULTILINE | re.DOTALL)
+EMPTY_LINE_RE = re.compile(r'\A\s*\n|\s*?(?=\n|\Z)', re.MULTILINE)
+CONSECUTIVE_LINE_RE = re.compile(r'\n+', re.MULTILINE)
+SPACES_RE = re.compile(r'\s*', re.MULTILINE)
+
+PATH_TO_STDLIB = './stdlib.scm'
 
 class Ast(object):
   pass
@@ -160,12 +173,6 @@ def legacyparse(s):
   if len(stack) != 1:
     raise SyntaxError("Expected close parenthesis")
   return stack[0]
-
-LINE_COMMENT_RE = re.compile(r';.*?(?=\n|\Z)', re.MULTILINE)
-BLOCK_COMMENT_RE = re.compile(r'#\|.*?\|#', re.MULTILINE | re.DOTALL)
-EMPTY_LINE_RE = re.compile(r'\A\s*\n|\s*?(?=\n|\Z)', re.MULTILINE)
-CONSECUTIVE_LINE_RE = re.compile(r'\n+', re.MULTILINE)
-SPACES_RE = re.compile(r'\s*', re.MULTILINE)
 
 # parses a string and returns a list of Ast elements.
 #
@@ -471,16 +478,15 @@ def even(scm, args):
   x, n = map(scm.eval, args)
   return x % n
 
-@scm.setfunc('square')
-def square(scm, args):
-  x, = map(scm.eval, args)
-  return x * x
-
 @scm.setfunc('random')
 def random_(scm, args):
   x, = map(scm.eval, args)
   # NOTE: randint includes x in the range of possible values.
   return random.randint(0, x)
+
+# Load the standard library.
+with open(PATH_TO_STDLIB) as f:
+  scm(f.read())
 
 def main():
   # TODO: Real option parsing.
