@@ -1,4 +1,24 @@
+"""
+This file is starting to get rather big...
+
+structure of this file:
+
+  Ast
+    Ast and its subclasses
+    toast function
+
+  parse functions
+    legacyparse
+    parse function
+
+  Scheme runtime
+    Scheme class
+    scm, the default root Scheme scope, and a lot of setfuncs
+"""
+# TODO: Break this file up into multiple files in a nice way.
+
 import random
+import re
 import sys
 
 class Ast(object):
@@ -22,7 +42,10 @@ false = Bool(False)
 
 class Symbol(Ast, str):
   def __repr__(self):
-    return str(self)
+    if str(self) in ('\t', '-\t', '\n'):
+      return repr(str(self))
+    else:
+      return str(self)
 
   def __eq__(self, other):
     return type(self) == type(other) and super(Symbol, self).__eq__(other)
@@ -64,6 +87,9 @@ def toast(x):
     return x
   elif x == None:
     return nil
+  elif isinstance(x, str):
+    # TODO: distinguish between Symbol and String types.
+    return Symbol(x)
   elif isinstance(x, list):
     return List(map(toast, x))
   elif isinstance(x, bool):
@@ -76,7 +102,8 @@ def toast(x):
     raise ValueError('%s (%s) could not be converted to Ast type' %
                      (x, type(x)))
 
-def parse(s):
+def legacyparse(s):
+  """Legacy parser. Used by 'parse'."""
   i = 0
   stack = [[]]
   startstack = []
@@ -133,6 +160,157 @@ def parse(s):
   if len(stack) != 1:
     raise SyntaxError("Expected close parenthesis")
   return stack[0]
+
+LINE_COMMENT_RE = re.compile(r';.*?(?=\n|\Z)', re.MULTILINE)
+BLOCK_COMMENT_RE = re.compile(r'#\|.*?\|#', re.MULTILINE | re.DOTALL)
+EMPTY_LINE_RE = re.compile(r'\A\s*\n|\s*?(?=\n|\Z)', re.MULTILINE)
+CONSECUTIVE_LINE_RE = re.compile(r'\n+', re.MULTILINE)
+SPACES_RE = re.compile(r'\s*', re.MULTILINE)
+
+# parses a string and returns a list of Ast elements.
+#
+# 'parse' should be more or less backwards compatible with 'legacyparse'.
+# in that any grammar accepted by legacyparse should be accepted by
+# parse, and in that case, they should return the same value.
+#
+# TODO: Have a much more cleaned up parser algorithm
+#
+# TODO: Include proper location tracking in the parsing algorithm.
+#       This is necessary in order to provide helpful error messages
+#       when things go wrong.
+def parse(s):
+  # First create a new version of the input string where all comments
+  # are removed.
+  # It is important to do this in such a way that we preserve the
+  # indentation.
+  #
+  # TODO: There are some interesting corner cases here.
+  #       Handle those correctly (possibly by discarding regexes
+  #       altogether).
+  s = LINE_COMMENT_RE.sub('', s)
+  s = BLOCK_COMMENT_RE.sub('', s)
+  s = EMPTY_LINE_RE.sub('', s)
+  s = CONSECUTIVE_LINE_RE.sub('\n', s)
+
+  # Split the string by logical lines.
+  # logical lines are newlines that are not inside nested parenthesis.
+  # Again, we do this in a way that preserves the indentation of each
+  # logical line.
+  start = 0
+  nest = 0
+  lines = []
+  for i, c in enumerate(s):
+    if c == '(':
+      nest += 1
+    elif c == ')':
+      nest -= 1
+    elif nest == 0 and c == '\n':
+      lines.append(s[start:i])
+      start = i + 1
+  if s[start:len(s)]:
+    lines.append(s[start:len(s)])
+
+  # Within each line, we can actually parse in the traditional manner.
+  indents = []
+  stack = [[]]
+  expressions = None
+  for line in lines:
+    indent = SPACES_RE.match(line).group()
+
+    if expressions is None:
+      indents.append(indent)
+
+    if indent != indents[-1] and indents[-1] in indent:
+      stack.append(List(expressions))
+      indents.append(indent)
+    else:
+      if expressions is None:
+        pass
+      elif len(expressions) == 1:
+        stack[-1].append(expressions[0])
+      else:
+        stack[-1].append(List(expressions))
+
+      if indent not in indents:
+        raise SyntaxError('Invalid indent ' + repr(indent))
+
+      while indent != indents[-1]:
+        ast = stack.pop()
+        stack[-1].append(ast)
+        indents.pop()
+
+    expressions = legacyparse(line)
+
+  if expressions is None:
+    pass
+  elif len(expressions) == 1:
+    stack[-1].append(expressions[0])
+  else:
+    stack[-1].append(List(expressions))
+
+  while len(indents) > 1:
+    ast = stack.pop()
+    stack[-1].append(ast)
+    indents.pop()
+
+  # TODO: Better error message.
+  assert len(stack) == 1, 'indentation processing error...'
+  return stack.pop()
+
+# Parse tests
+# TODO: Figure out what I want to do with these tests.
+#       Do I want to keep these here or move them to
+#       use some proper test framework?
+assert (
+    parse("""
+
+    1
+    + 2 3
+
+    """) == [
+        toast(1),
+        toast(['+', 2, 3])])
+
+assert (
+    parse("""
+
+    + 1
+      2
+      + 3
+        4
+        5
+
+    """) == [toast(
+        ['+', 1,
+              2,
+              ['+', 3,
+                    4,
+                    5]])])
+
+assert (
+    parse("""
+
+    + 1
+      2
+      + 3 4 5
+
+    """) == [toast(
+        ['+', 1,
+              2,
+              ['+', 3, 4, 5]])])
+
+assert (
+    parse("""
+
+    define (f a b)
+      + a
+        b
+
+    """) == [toast(
+        ['define', ['f', 'a', 'b'],
+          ['+', 'a',
+                'b']])])
+
 
 class Scheme(object):
   def __init__(self, parent=None, table=None):
@@ -305,12 +483,20 @@ def random_(scm, args):
   return random.randint(0, x)
 
 def main():
-  if len(sys.argv) > 1:
-    with open(sys.argv[1]) as f:
-      content = f.read()
+  # TODO: Real option parsing.
+  if len(sys.argv) == 2:
+    parser = parse
+  elif len(sys.argv) == 3 and sys.argv[2] == '--use-legacy-parser':
+    parser = legacyparse
   else:
-    content = sys.stdin.read()
-  scm(content)
+    print('Usage: python %s script.scm [--use-legacy-parser]' % sys.argv[0])
+    return 1
+
+  with open(sys.argv[1]) as f:
+    content = f.read()
+
+  scm(parser(content))
+
 
 if __name__ == '__main__':
-  main()
+  exit(main() or 0)
