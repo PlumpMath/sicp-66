@@ -6,3 +6,12 @@ define (square x)
 
 define (cube x)
   (* x x x)
+
+define (abs x)
+  if (< x 0)
+     (- x)
+     x
+
+define (indentity x) x
+
+

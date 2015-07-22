@@ -22,6 +22,7 @@ structure of this file:
 """
 # TODO: Break this file up into multiple files in a nice way.
 
+import math
 import random
 import re
 import sys
@@ -363,6 +364,7 @@ scm = Scheme()
 scm.table[Symbol('nil')] = nil
 scm.table[Symbol('true')] = true
 scm.table[Symbol('false')] = false
+scm.table[Symbol('pi')] = toast(math.pi)
 
 @scm.setfunc('print')
 def print_(scm, args):
@@ -487,6 +489,12 @@ def random_(scm, args):
 # Load the standard library.
 with open(PATH_TO_STDLIB) as f:
   scm(f.read())
+
+@scm.setfunc('lambda')
+def lambda_(scm, args):
+  arglist = args[0]
+  body = args[1:]
+  return Lambda('<lambda>', arglist, body, scm)
 
 def main():
   # TODO: Real option parsing.
