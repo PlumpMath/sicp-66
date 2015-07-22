@@ -7,10 +7,9 @@ Writing a Python implementation of Scheme that I can use for this purpose as I g
 
 
 Syntax
-======
+------
 
-Implicit parentheses
---------------------
+### Implicit parentheses
 
 As I was learning Scheme (1.1 and 1.2), I noticed an interesting artifact of how the code was being organized.
 
