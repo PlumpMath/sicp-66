@@ -80,7 +80,7 @@ class Object(Ast):
   def __str__(self):
     key = Symbol('__str__')
     if key in self.attributes:
-      return self.attributes[key](scm, [])
+      return self.attributes[key](None, [])
     else:
       return super(Object, self).__str__()
 
@@ -96,10 +96,16 @@ class Lambda(Ast):
     if len(args) != len(self.arglist):
       raise TypeError('Expected %d arguments but found %d arguments' %
                       (len(self.arglist), len(args)))
+
+    # If scm is None, we assume that 'args' has already been evaluated.
+    if scm is not None:
+      args = List(map(scm.eval, args))
+
     childscm = Scheme(self.parentscm)
-    for name, value in zip(self.arglist, List(map(scm.eval, args))):
+    for name, value in zip(self.arglist, args):
       childscm.declare(name, value)
     last = None
+
     for expression in self.body:
       last = childscm.eval(expression)
     return last
