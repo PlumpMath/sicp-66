@@ -1,3 +1,4 @@
 define x 10
-setattr x (quote hi) 50
-print (getattr x (quote hi))
+set! x.a 50
+; print x.a
+; print x

@@ -27,6 +27,9 @@ import random
 import re
 import sys
 
+INT_RE = re.compile(r'(?:\+|\-|)\d+')
+FLOAT_RE = re.compile(r'(?:\+|\-|)(?:\.\d+|\d+\.\d*)')
+
 LINE_COMMENT_RE = re.compile(r';.*?(?=\n|\Z)', re.MULTILINE)
 BLOCK_COMMENT_RE = re.compile(r'#\|.*?\|#', re.MULTILINE | re.DOTALL)
 EMPTY_LINE_RE = re.compile(r'\A\s*\n|\s*?(?=\n|\Z)', re.MULTILINE)
@@ -87,7 +90,7 @@ class Lambda(Ast):
                       (len(self.arglist), len(args)))
     childscm = Scheme(self.parentscm)
     for name, value in zip(self.arglist, List(map(scm.eval, args))):
-      childscm.table[name] = value
+      childscm.declare(name, value)
     last = None
     for expression in self.body:
       last = childscm.eval(expression)
@@ -160,18 +163,38 @@ def legacyparse(s):
       i += 1
       stack[-1][-1].start = startstack.pop()
       stack[-1][-1].end = i
+    elif FLOAT_RE.match(s, i):
+      m = FLOAT_RE.match(s, i)
+      j = i
+      i = m.end()
+      val = Float(m.group())
+      val.start = j
+      val.end = i
+      stack[-1].append(val)
+    elif INT_RE.match(s, i):
+      m = INT_RE.match(s, i)
+      j = i
+      i = m.end()
+      val = Int(m.group())
+      val.start = j
+      val.end = i
+      stack[-1].append(val)
+    elif s[i] == '.':
+      j = i
+      i += 1
+      while i < len(s) and s[i] not in '().' and not s[i].isspace():
+        i += 1
+      attribute = s[j+1:i]
+      if attribute == '':
+        raise SyntaxError("Attributes can't have blank names")
+      owner = stack[-1].pop()
+      stack[-1].append(toast(['__attr__', owner, attribute]))
     else:
       j = i
-      while i < len(s) and s[i] not in '()' and not s[i].isspace():
+      while i < len(s) and s[i] not in '().' and not s[i].isspace():
         i += 1
       tok = s[j:i]
-      try:
-        val = Int(tok)
-      except ValueError:
-        try:
-          val = Float(tok)
-        except ValueError:
-          val = Symbol(tok)
+      val = Symbol(tok)
       val.start = j
       val.end = i
       stack[-1].append(val)
@@ -328,7 +351,7 @@ assert (
 class Scheme(object):
   def __init__(self, parent=None, table=None):
     self.parent = parent
-    self.table = table or dict()
+    self._table = table or dict()
 
   def __call__(self, code):
     if isinstance(code, str):
@@ -337,18 +360,40 @@ class Scheme(object):
     for ast in code:
       self.eval(ast)
 
+  def declare(self, symbol, value):
+    assert isinstance(symbol, Symbol)
+    self._table[symbol] = value
+
   def __getitem__(self, symbol):
     assert isinstance(symbol, Symbol)
-    if symbol in self.table:
-      return self.table[symbol]
+    if symbol in self._table:
+      return self._table[symbol]
     elif self.parent:
       return self.parent[symbol]
     else:
       raise KeyError('unrecognized symbol: ' + symbol)
 
+  def __setitem__(self, symbol, value):
+    assert isinstance(symbol, Symbol)
+    if symbol in self._table:
+      self._table[symbol] = value
+    elif self.parent:
+      self.parent[symbol] = value
+    else:
+      raise KeyError('assignment to unrecognized symbol: ' + symbol)
+
+  def __contains__(self, symbol):
+    assert isinstance(symbol, Symbol)
+    if symbol in self._table:
+      return True
+    elif self.parent:
+      return self.parent(symbol)
+    else:
+      return False
+
   def setfunc(self, name):
     def wrapper(func):
-      ret = self.table[Symbol(name)] = Builtin(func)
+      ret = self.declare(Symbol(name), Builtin(func))
       return ret
     return wrapper
 
@@ -366,10 +411,10 @@ class Scheme(object):
 
 scm = Scheme()
 
-scm.table[Symbol('nil')] = nil
-scm.table[Symbol('true')] = true
-scm.table[Symbol('false')] = false
-scm.table[Symbol('pi')] = toast(math.pi)
+scm.declare(Symbol('nil'), nil)
+scm.declare(Symbol('true'), true)
+scm.declare(Symbol('false'), false)
+scm.declare(Symbol('pi'), toast(math.pi))
 
 @scm.setfunc('print')
 def print_(scm, args):
@@ -429,15 +474,31 @@ def define(scm, args):
   target = args[0]
   if isinstance(target, Symbol):
     source, = map(scm.eval, args[1:])
-    scm.table[target] = source
+    scm.declare(target, source)
   elif (isinstance(target, List) and
         len(target) > 0 and
         all(isinstance(entry, Symbol) for entry in target)):
     name = target[0]
     arglist = target[1:]
-    scm.table[name] = Lambda(name, arglist, args[1:], scm)
+    scm.declare(name, Lambda(name, arglist, args[1:], scm))
   else:
     raise ValueError("I don't know how to 'define' " + str(target))
+
+@scm.setfunc('set!')
+def define(scm, args):
+  target = args[0]
+  if isinstance(target, Symbol):
+    source, = map(scm.eval, args[1:])
+    scm[target] = source
+  elif (isinstance(target, List) and
+        len(target) == 3 and
+        target[0] == Symbol('__attr__')):
+    _, value = args
+    owner = scm.eval(target[1])
+    attribute = target[2]
+    owner.attributes[attribute] = scm.eval(value)
+  else:
+    raise ValueError("I don't know how to 'set!' " + str(target))
 
 @scm.setfunc('cond')
 def cond(scm, args):
@@ -502,15 +563,10 @@ def quote(scm, args):
   x, = args
   return x
 
-@scm.setfunc('setattr')
-def setattr_(scm, args):
-  owner, name, value = map(scm.eval, args)
-  assert type(name) == Symbol
-  owner.attributes[name] = value
-
-@scm.setfunc('getattr')
-def getattr_(scm, args):
-  owner, name = map(scm.eval, args)
+@scm.setfunc('__attr__')
+def attr_(scm, args):
+  ownerexpr, name = args
+  owner = scm.eval(ownerexpr)
   assert type(name) == Symbol
   return owner.attributes[name]
 
