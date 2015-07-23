@@ -22,6 +22,7 @@ structure of this file:
 """
 # TODO: Break this file up into multiple files in a nice way.
 
+import fractions
 import math
 import random
 import re
@@ -83,6 +84,14 @@ class Object(Ast):
       return self.attributes[key](None, [])
     else:
       return super(Object, self).__str__()
+
+  def __eq__(self, other):
+    # TODO: Come up with better syntax for,
+    #       'evaluate as function' and not as macro.
+    return self.attributes[Symbol('=')](None, [other])
+
+  def __add__(self, other):
+    return self.attributes[Symbol('+')](None, [other])
 
 class Lambda(Ast):
   def __init__(self, name, arglist, body, parentscm):
@@ -437,7 +446,13 @@ def print_(scm, args):
 
 @scm.setfunc('+')
 def add(scm, args):
-  return sum(map(scm.eval, args))
+  if scm is not None:
+    args = list(map(scm.eval, args))
+  it = iter(args)
+  first = next(it)
+  for item in it:
+    first += item
+  return first
 
 @scm.setfunc('-')
 def subtract(scm, args):
@@ -600,6 +615,11 @@ def Object_(scm, args):
 @scm.setfunc('list*')
 def liststar(scm, args):
   return list(map(scm.eval, args))
+
+@scm.setfunc('gcd')
+def gcd_(scm, args):
+  a, b = map(scm.eval, args)
+  return fractions.gcd(a, b)
 
 # Load the standard library.
 with open(PATH_TO_STDLIB) as f:
