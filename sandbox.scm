@@ -16,3 +16,6 @@ define p (Point 55 66)
 assert (= 55 p.x)
 assert (= 66 p.y)
 
+assert
+  = (quote (1 2 3))
+    (list*  1 2 3)

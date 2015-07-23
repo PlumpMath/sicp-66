@@ -597,6 +597,10 @@ def attr_(scm, args):
 def Object_(scm, args):
   return Object()
 
+@scm.setfunc('list*')
+def liststar(scm, args):
+  return list(map(scm.eval, args))
+
 # Load the standard library.
 with open(PATH_TO_STDLIB) as f:
   scm(f.read())
