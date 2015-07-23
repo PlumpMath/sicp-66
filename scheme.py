@@ -76,6 +76,14 @@ class Int(Ast, int):
 class Float(Ast, float):
   pass
 
+class Object(Ast):
+  def __str__(self):
+    key = Symbol('__str__')
+    if key in self.attributes:
+      return self.attributes[key](scm, [])
+    else:
+      return super(Object, self).__str__()
+
 class Lambda(Ast):
   def __init__(self, name, arglist, body, parentscm):
     super(Lambda, self).__init__()
@@ -484,6 +492,9 @@ def define(scm, args):
   else:
     raise ValueError("I don't know how to 'define' " + str(target))
 
+def isattr(x):
+  return isinstance(x, List) and len(x) == 3 and x[0] == Symbol('__attr__')
+
 @scm.setfunc('set!')
 def define(scm, args):
   target = args[0]
@@ -491,8 +502,14 @@ def define(scm, args):
     source, = map(scm.eval, args[1:])
     scm[target] = source
   elif (isinstance(target, List) and
-        len(target) == 3 and
-        target[0] == Symbol('__attr__')):
+        len(target) > 0 and
+        isattr(target[0]) and
+        all(isinstance(entry, Symbol) for entry in target[1:])):
+    owner = scm.eval(target[0][1])
+    attribute = target[0][2]
+    arglist = target[1:]
+    owner.attributes[attribute] = Lambda(attribute, arglist, args[1:], scm)
+  elif isattr(target):
     _, value = args
     owner = scm.eval(target[1])
     attribute = target[2]
@@ -569,6 +586,10 @@ def attr_(scm, args):
   owner = scm.eval(ownerexpr)
   assert type(name) == Symbol
   return owner.attributes[name]
+
+@scm.setfunc('Object')
+def Object_(scm, args):
+  return Object()
 
 # Load the standard library.
 with open(PATH_TO_STDLIB) as f:
