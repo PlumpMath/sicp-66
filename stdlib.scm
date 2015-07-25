@@ -1,6 +1,9 @@
 ; Standard library!
 ; So that not everything has to be implemented in the python file.
 
+define (> lhs rhs)
+  (< rhs lhs)
+
 define (square x)
   (* x x)
 

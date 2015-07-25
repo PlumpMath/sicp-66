@@ -28,6 +28,10 @@ define (make-rat numerator denominator)
 
   x
 
+define x
+  + (make-rat 1 4)
+    (make-rat 1 4)
+
 assert
   = (make-rat 1 2)
     + (make-rat 1 4)
