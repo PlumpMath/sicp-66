@@ -12,7 +12,7 @@ BLOCK_COMMENT_RE = re.compile(r'\s*#\|.*?\|#\s*$', re.MULTILINE|re.DOTALL)
 LINE_COMMENT_RE = re.compile(r'\s*;.*?$', re.MULTILINE|re.DOTALL)
 FLOAT_RE = re.compile(r'(?:\+|\-)?(?:\.\d+|\d+\.\d*)')
 INT_RE = re.compile(r'(?:\+|\-)?\d+')
-SYMBOL_RE = re.compile(r'[^\s\(\)\.]+')
+SYMBOL_RE = re.compile(r'[^\s\(\)\.]+|\.(?![^\s\(\)\.])')
 ATTRIBUTE_RE = re.compile(r'\.[^\s\(\)\.]+')
 SPACE_RE = re.compile(r'(?:(?!\n)\s)+')
 UNKNOWN_RE = re.compile(r'\S+')
@@ -98,25 +98,35 @@ class Nil(Object):
   def __repr__(self):
     return 'nil'
 
+  def __nonzero__(self):
+    return self.__bool__()
+
+  def __bool__(self):
+    return False
+
 nil = Nil()
 
 class Function(Object):
   pass
 
 class Lambda(Function):
-  def __init__(self, arglist, body, parentscope):
+  def __init__(self, arglist, body, parentscope, vararg=None):
     self.arglist = arglist
     self.body = body
     self.parentscope = parentscope
+    self.vararg = vararg
 
   def __call__(self, *args):
-    if len(self.arglist) != len(args):
+    if not self.vararg and len(self.arglist) != len(args):
       raise TypeError('Lambda expected %d args but found %d' %
                       (len(self.arglist), len(args)))
 
     scope = Scope(self.parentscope)
     for name, value in zip(self.arglist, args):
       scope.declare(name, value)
+
+    if self.vararg:
+      scope.declare(self.vararg, args[len(self.arglist):])
 
     last = None
     for ast in self.body:
@@ -388,6 +398,7 @@ class Scope(object):
   def declare(self, symbol, value):
     assert isinstance(symbol, Symbol)
     self._table[symbol] = value
+    return value
 
   def __getitem__(self, symbol):
     assert isinstance(symbol, Symbol)
@@ -484,10 +495,7 @@ def define(scope, name, *rest):
   elif isinstance(name, List):
     arglist = name[1:]
     name = name[0]
-    body = rest
-    function = Lambda(arglist, body, scope)
-    scope.declare(name, function)
-    return function
+    return scope.declare(name, lambda_.call(scope, arglist, *rest))
 
   else:
     raise ValueError("I don't know how to 'define' " + str(name))
@@ -623,7 +631,19 @@ def remainder(x, n):
 
 @root.setform('lambda')
 def lambda_(scope, arglist, *body):
-  return Lambda(arglist, body, scope)
+  if '.' in arglist:
+    # TODO: Error handling.
+    vararg = arglist[-1]
+    argnames = arglist[:-2]
+  else:
+    vararg = None
+    argnames = arglist
+  return Lambda(argnames, body, scope,
+                vararg=vararg)
+
+@root.setfunc('apply')
+def apply(f, args):
+  return f(*args)
 
 @root.setfunc('gcd')
 def gcd_(first, *rest):
@@ -634,7 +654,7 @@ def gcd_(first, *rest):
 
 # Load the standard library.
 with open(PATH_TO_STDLIB) as f:
-  root(f.read())
+  root(parse(f.read(), PATH_TO_STDLIB))
 
 def main():
   # TODO: Real option parsing.
