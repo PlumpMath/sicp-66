@@ -351,6 +351,8 @@ class Scope(object):
     self.parent = parent
     self._table = table or dict()
     if parent is None:
+      # TODO: Add an option where it's not debug mode, but allow
+      #       Python code to catch the exception.
       self.debug = False # If true, will also dump Python stacktrace on error.
       self.callstack = []
       self.current = None
@@ -372,13 +374,12 @@ class Scope(object):
       if self.root.stacktrace is not None:
         for ast in self.root.stacktrace:
           print(ast.location_message)
-        print(e)
-        if self.debug:
-          raise
-        else:
-          exit(1)
-      else:
+      print(repr(e))
+
+      if self.debug:
         raise
+      else:
+        exit(1)
 
   @property
   def root(self):
@@ -449,7 +450,15 @@ class Scope(object):
         #       We might need some mechanism for forms to indicate
         #       that it is done 'eval'ing all the arguments it
         #       wants to.
-        return toObject(form.call(self, *ast[1:]))
+        self.root.callstack.append(ast)
+        try:
+          return toObject(form.call(self, *ast[1:]))
+        except:
+          if self.root.stacktrace is None:
+            self.root.stacktrace = tuple(self.root.callstack)
+          raise
+        finally:
+          self.root.callstack.pop()
     elif isinstance(ast, Symbol):
       return self[ast]
     elif isinstance(ast, (Int, Float)):
@@ -635,8 +644,7 @@ def main():
 
   if len(sys.argv) == 3 and sys.argv[2] == '--debug':
     print('*** Running in debug mode ***')
-
-  root.debug = True
+    root.debug = True
 
   with open(sys.argv[1]) as f:
     content = f.read()

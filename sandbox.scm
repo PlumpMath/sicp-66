@@ -19,3 +19,5 @@ assert (= 66 p.y)
 assert
   = (quote (1 2 3))
     (list*  1 2 3)
+
+assert (= 1 2)
