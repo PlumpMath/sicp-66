@@ -16,3 +16,14 @@ define (abs x)
      x
 
 define (indentity x) x
+
+define (cons a b)
+  lambda (m)
+    (m a b)
+
+define (car x)
+  x (lambda (a b) a)
+
+define (cdr x)
+  x (lambda (a b) b)
+
