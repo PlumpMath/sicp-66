@@ -29,6 +29,7 @@ class Object(object):
     self.start = None
     self.end = None
     self.parse_result = None
+
     return self
 
   @property
@@ -350,6 +351,7 @@ class Scope(object):
     self.parent = parent
     self._table = table or dict()
     if parent is None:
+      self.debug = False # If true, will also dump Python stacktrace on error.
       self.callstack = []
       self.current = None
       self.stacktrace = None # snapshot of the callstack when we crash.
@@ -371,7 +373,10 @@ class Scope(object):
         for ast in self.root.stacktrace:
           print(ast.location_message)
         print(e)
-        raise
+        if self.debug:
+          raise
+        else:
+          exit(1)
       else:
         raise
 
@@ -624,9 +629,14 @@ with open(PATH_TO_STDLIB) as f:
 
 def main():
   # TODO: Real option parsing.
-  if len(sys.argv) != 2:
-    print('Usage: python %s script.scm' % sys.argv[0])
+  if len(sys.argv) != 2 and (len(sys.argv) != 3 or sys.argv[2] != '--debug'):
+    print('Usage: python %s script.scm [--debug]' % sys.argv[0])
     return 1
+
+  if len(sys.argv) == 3 and sys.argv[2] == '--debug':
+    print('*** Running in debug mode ***')
+
+  root.debug = True
 
   with open(sys.argv[1]) as f:
     content = f.read()
